@@ -30,6 +30,19 @@ async function run() {
     await client.connect();
 
     const database = client.db("recipehub");
+    const recipesCollection = database.collection("recipes");
+
+
+    app.post('/api/recipes', async (req, res) => {
+      try {
+        const recipe = req.body;
+        const result = await recipesCollection.insertOne(recipe);
+        
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to create recipe' });
+      }
+    });
 
 
 
