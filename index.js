@@ -43,6 +43,15 @@ async function run() {
         res.status(500).send({ error: 'Failed to create recipe' });
       }
     });
+    app.get('/api/recipes', async (req, res) => {
+      try {
+        const recipes = await recipesCollection.find().toArray();
+        res.send(recipes);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch recipes' });
+      }
+    });
+    
 
 
 
