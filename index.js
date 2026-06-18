@@ -51,7 +51,16 @@ async function run() {
         res.status(500).send({ error: 'Failed to fetch recipes' });
       }
     });
-    
+    app.get('/api/recipes/:id', async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const recipe = await recipesCollection.findOne(query);
+        res.send(recipe);
+      } catch (error) {
+        res.status(500).send({ error: 'Failed to fetch recipe' });
+      }
+    });
 
 
 
