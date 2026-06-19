@@ -31,6 +31,7 @@ async function run() {
 
     const database = client.db("recipehub");
     const recipesCollection = database.collection("recipes");
+    const favoritesCollection = database.collection("favorites");
 
 
     app.post('/api/recipes', async (req, res) => {
@@ -59,6 +60,42 @@ async function run() {
         res.send(recipe);
       } catch (error) {
         res.status(500).send({ error: 'Failed to fetch recipe' });
+      }
+    });
+    app.post("/favorites", async (req, res) => {
+      try {
+        const { userEmail, recipeId, addedAt } = req.body;
+        if (!userEmail || !recipeId) {
+          return res.status(400).send({
+            message: "Missing required fields",
+          });
+        }
+        const existing = await favoritesCollection.findOne({
+          userEmail,
+          recipeId,
+        });
+
+        if (existing) {
+          return res.status(409).send({
+            message: "Already in favorites",
+          });
+        }
+          const result = await favoritesCollection.insertOne({
+          userEmail,
+          recipeId,
+          addedAt: addedAt || new Date(),
+        });
+
+        res.send({
+          success: true,
+          insertedId: result.insertedId,
+        });
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({
+          message: "Server error",
+        });
       }
     });
 
