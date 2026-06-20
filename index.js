@@ -32,6 +32,7 @@ async function run() {
     const database = client.db("recipehub");
     const recipesCollection = database.collection("recipes");
     const favoritesCollection = database.collection("favorites");
+    const reportsCollection = database.collection("reports");
 
 
     app.post('/api/recipes', async (req, res) => {
@@ -62,6 +63,58 @@ async function run() {
         res.status(500).send({ error: 'Failed to fetch recipe' });
       }
     });
+    app.patch("/recipes/:id/like", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const result = await recipesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $inc: { likes: 1 },
+          }
+        );
+
+        res.send({
+          success: true,
+          message: "Liked successfully",
+          result,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    //my recipes
+    app.get("/recipes", async (req, res) => {
+      try {
+        const email = req.query.email;
+
+        if (!email) {
+          return res.status(400).send({ message: "Email required" });
+        }
+
+        const result = await recipesCollection
+          .find({ userEmail: email })
+          .toArray();
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    // delete my recipes
+    app.delete("/recipes/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await recipesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+
+
+
     app.post("/favorites", async (req, res) => {
       try {
         const { userEmail, recipeId, addedAt } = req.body;
@@ -96,6 +149,49 @@ async function run() {
         res.status(500).send({
           message: "Server error",
         });
+      }
+    });
+
+    //reportsCollection
+    app.post("/recipes/:id/report", async (req, res) => {
+      try {
+        const recipeId = req.params.id;
+        const { reporterEmail, reason } = req.body;
+
+        if (!recipeId || !reason) {
+          return res.status(400).send({ message: "Missing fields" });
+        }
+
+        // prevent duplicate report by same user (optional but pro)
+        const existing = await reportsCollection.findOne({
+          recipeId,
+          reporterEmail,
+        });
+
+        if (existing) {
+          return res.status(409).send({
+            message: "You already reported this recipe",
+          });
+        }
+
+        const report = {
+          recipeId,
+          reporterEmail: reporterEmail || "anonymous",
+          reason,
+          status: "pending",
+          createdAt: new Date(),
+        };
+
+        const result = await reportsCollection.insertOne(report);
+
+        res.send({
+          success: true,
+          insertedId: result.insertedId,
+        });
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Server error" });
       }
     });
 
