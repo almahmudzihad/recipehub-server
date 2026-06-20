@@ -33,8 +33,63 @@ async function run() {
     const recipesCollection = database.collection("recipes");
     const favoritesCollection = database.collection("favorites");
     const reportsCollection = database.collection("reports");
+    const usersCollection = database.collection("user");
+    const paymentsCollection = database.collection("payments");
+    //Dashbaord
 
+    app.get("/dashboard-stats/:email", async (req, res) => {
+      const email = req.params.email;
 
+      const totalRecipes = await recipesCollection.countDocuments({
+        userEmail: email,
+      });
+
+      const totalFavorites = await favoritesCollection.countDocuments({
+        userEmail: email,
+      });
+
+      const totalPurchased = await paymentsCollection.countDocuments({
+        userEmail: email,
+      });
+
+      const recipes = await recipesCollection
+        .find({ userEmail: email })
+        .toArray();
+
+      const totalLikes = recipes.reduce(
+        (sum, recipe) => sum + (recipe.likes || 0),
+        0
+      );
+
+      const user = await usersCollection.findOne({
+        email,
+      });
+
+      res.send({
+        totalRecipes,
+        totalFavorites,
+        totalPurchased,
+        totalLikes,
+        isPremium: user?.isPremium || false,
+      });
+    });
+    app.patch("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const { name, image } = req.body;
+
+      const result = await usersCollection.updateOne(
+        { email },
+        {
+          $set: {
+            name,
+            image,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      res.send(result);
+    });
     app.post('/api/recipes', async (req, res) => {
       try {
         const recipe = req.body;
@@ -82,6 +137,31 @@ async function run() {
       } catch (error) {
         console.error(error);
         res.status(500).send({ message: "Server error" });
+      }
+    });
+    app.patch("/recipes/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        const filter = { _id: new ObjectId(id) };
+
+        const updateDoc = {
+          $set: {
+            ...req.body,
+            updatedAt: new Date(),
+          },
+        };
+
+        const result = await recipesCollection.updateOne(filter, updateDoc);
+
+        res.send(result);
+      } catch (error) {
+        console.log("UPDATE ERROR:", error);
+
+        res.status(500).send({
+          message: "Internal Server Error",
+          error: error.message,
+        });
       }
     });
     //my recipes
@@ -151,7 +231,35 @@ async function run() {
         });
       }
     });
+    app.get("/favorites/:email", async (req, res) => {
+      const email = req.params.email;
 
+      const favorites = await favoritesCollection
+        .find({ userEmail: email })
+        .toArray();
+
+      const recipeIds = favorites.map(
+        (item) => new ObjectId(item.recipeId)
+      );
+
+      const recipes = await recipesCollection
+        .find({
+          _id: { $in: recipeIds },
+        })
+        .toArray();
+
+      res.send(recipes);
+    });
+    app.delete("/favorites/:recipeId/:email", async (req, res) => {
+      const { recipeId, email } = req.params;
+
+      const result = await favoritesCollection.deleteOne({
+        recipeId,
+        userEmail: email,
+      });
+
+      res.send(result);
+    });
     //reportsCollection
     app.post("/recipes/:id/report", async (req, res) => {
       try {
