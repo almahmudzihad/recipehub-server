@@ -153,6 +153,7 @@ async function run() {
     app.get("/recipes/featured", async (req, res) => {
       const featured = await recipesCollection
         .find({ isFeatured: true })
+        .limit(6)
         .toArray();
 
       res.send(featured);
@@ -305,12 +306,42 @@ async function run() {
         });
       }
     });
-    app.get('/api/recipes', async (req, res) => {
+    app.get("/api/recipes", async (req, res) => {
       try {
-        const recipes = await recipesCollection.find().toArray();
-        res.send(recipes);
+        const { page = 1, limit = 6, search, category, cuisine } = req.query;
+
+        let query = {};
+
+        if (search) {
+          query.title = { $regex: search, $options: "i" };
+        }
+
+        if (category) {
+          query.category = category;
+        }
+
+        if (cuisine) {
+          query.cuisine = cuisine;
+        }
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const recipes = await recipesCollection
+          .find(query)
+          .skip(skip)
+          .limit(Number(limit))
+          .toArray();
+
+        const total = await recipesCollection.countDocuments(query);
+
+        res.send({
+          recipes,
+          total,
+          totalPages: Math.ceil(total / limit),
+          currentPage: Number(page),
+        });
       } catch (error) {
-        res.status(500).send({ error: 'Failed to fetch recipes' });
+        res.status(500).send({ message: "Failed to fetch recipes" });
       }
     });
     app.get('/api/recipes/:id', async (req, res) => {
@@ -370,6 +401,7 @@ async function run() {
       }
     });
     //my recipes
+    
     app.get("/recipes", async (req, res) => {
       try {
         const email = req.query.email;
@@ -387,6 +419,7 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
+
     // delete my recipes
     app.delete("/recipes/:id", async (req, res) => {
       const id = req.params.id;
@@ -510,9 +543,95 @@ async function run() {
 
 
     //payment
+    app.post("/payments", async (req, res) => {
+      try {
+        const {
+          userEmail,
+          userId,
+          recipeId,
+          amount,
+          transactionId,
+          paymentStatus,
+          paymentType,
+        } = req.body;
+
+        // basic validation
+        if (!userEmail || !transactionId) {
+          return res.status(400).send({
+            message: "Missing required fields",
+          });
+        }
+
+        const paymentDoc = {
+          userEmail,
+          userId: userId || null,
+          recipeId: recipeId || null,
+          amount: Number(amount) || 0,
+          transactionId,
+          paymentStatus: paymentStatus || "pending",
+          paymentType: paymentType || "recipe", // recipe | membership
+          paidAt: new Date(),
+        };
+
+        const result = await paymentsCollection.insertOne(paymentDoc);
+
+        res.send({
+          success: true,
+          insertedId: result.insertedId,
+        });
+
+      } catch (error) {
+        console.error("PAYMENT ERROR:", error);
+
+        res.status(500).send({
+          message: "Payment save failed",
+          error: error.message,
+        });
+      }
+    });
+    app.get("/payments/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        const payments = await paymentsCollection
+          .find({ userEmail: email, paymentStatus: "paid" })
+          .toArray();
+
+        res.send(payments);
+      } catch (error) {
+        res.status(500).send({
+          message: "Failed to fetch payments",
+        });
+      }
+    });
+    app.get("/admin/transactions", async (req, res) => {
+      try {
+        const transactions = await paymentsCollection
+          .find()
+          .sort({ paidAt: -1 })
+          .toArray();
+
+        res.send(transactions);
+      } catch (error) {
+        res.status(500).send({
+          message: "Failed to fetch transactions",
+        });
+      }
+    });
     
+    app.get("/recipes/popular", async (req, res) => {
+      try {
+        const recipes = await recipesCollection
+          .find()
+          .sort({ likes: -1 }) // 🔥 most liked first
+          .limit(6)
+          .toArray();
 
-
+        res.send(recipes);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch popular recipes" });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
