@@ -37,6 +37,159 @@ async function run() {
     const paymentsCollection = database.collection("payments");
     //Dashbaord
 
+    // admin dashboard
+    app.get("/admin-stats", async (req, res) => {
+      try {
+        
+
+        const users = await usersCollection.countDocuments();
+        const recipes = await recipesCollection.countDocuments();
+        const premiumUsers = await usersCollection.countDocuments({
+          isPremium: true,
+        });
+        const reports = await reportsCollection.countDocuments();
+
+        res.send({
+          users,
+          recipes,
+          premiumUsers,
+          reports,
+        });
+      } catch (error) {
+        res.status(500).send({ message: error.message });
+      }
+    });
+    app.get("/admin/dashboard", async (req, res) => {
+      try {
+        const totalUsers = await usersCollection.countDocuments();
+        const totalRecipes = await recipesCollection.countDocuments();
+        const totalPremium = await usersCollection.countDocuments({
+          isPremium: true,
+        });
+        const totalReports = await reportsCollection.countDocuments();
+
+        res.send({
+          totalUsers,
+          totalRecipes,
+          totalPremium,
+          totalReports,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+    app.get("/admin/users", async (req, res) => {
+      const users = await usersCollection.find().toArray();
+      res.send(users);
+    });
+    app.get("/admin/recipes/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: "Invalid recipe id" });
+        }
+
+        const recipe = await recipesCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!recipe) {
+          return res.status(404).send({ message: "Recipe not found" });
+        }
+
+        res.send(recipe);
+      } catch (error) {
+        res.status(500).send({
+          message: "Server error",
+          error: error.message,
+        });
+      }
+    });
+    app.patch("/admin/users/:id/block", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { isBlocked: true } }
+      );
+
+      res.send(result);
+    });
+
+    app.patch("/admin/users/:id/unblock", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { isBlocked: false } }
+      );
+
+      res.send(result);
+    });
+    app.get("/admin/recipes", async (req, res) => {
+      const recipes = await recipesCollection.find().toArray();
+      res.send(recipes);
+    });
+    app.delete("/admin/recipes/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await recipesCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });
+    app.patch("/admin/recipes/:id/feature", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await recipesCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { isFeatured: true } }
+      );
+
+      res.send(result);
+    });
+    app.get("/recipes/featured", async (req, res) => {
+      const featured = await recipesCollection
+        .find({ isFeatured: true })
+        .toArray();
+
+      res.send(featured);
+    });
+    app.get("/admin/reports", async (req, res) => {
+      const reports = await reportsCollection.find().toArray();
+      res.send(reports);
+    });
+    app.delete("/admin/reports/:id/remove-recipe", async (req, res) => {
+      const reportId = req.params.id;
+
+      const report = await reportsCollection.findOne({
+        _id: new ObjectId(reportId),
+      });
+
+      if (!report) return res.status(404).send({ message: "Not found" });
+
+      await recipesCollection.deleteOne({
+        _id: new ObjectId(report.recipeId),
+      });
+
+      await reportsCollection.deleteOne({
+        _id: new ObjectId(reportId),
+      });
+
+      res.send({ success: true });
+    });
+    app.delete("/admin/reports/:id", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await reportsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      res.send(result);
+    });                                           
+
     app.get("/dashboard-stats/:email", async (req, res) => {
       const email = req.params.email;
 
@@ -73,6 +226,35 @@ async function run() {
         isPremium: user?.isPremium || false,
       });
     });
+    app.patch("/users/premium", async (req, res) => {
+      const { email } = req.body;
+
+      console.log("EMAIL FROM STRIPE:", req.body);
+
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      // 👈 Regex use korun jeno Case-Insensitive (i) vabe match kore
+      // Ebong email-er shurute/sheshe space thakle trim korar jonno ^ ebong $ anchor
+      const emailRegex = new RegExp(`^${email.trim()}$`, "i");
+
+      const user = await usersCollection.findOne({ email: emailRegex });
+      console.log("USER FOUND IN DB:", user);
+
+      if (!user) {
+        // User na paile update e jabe na, direct raw response dibe
+        return res.send({ acknowledged: true, modifiedCount: 0, matchedCount: 0, message: "User not found in DB" });
+      }
+
+      // User paile update hobe
+      const result = await usersCollection.updateOne(
+        { email: emailRegex }, // 👈 Ekhaneও regex filter use korun
+        { $set: { isPremium: true } }
+      );
+
+      res.send(result);
+    });
     app.patch("/users/:email", async (req, res) => {
       const email = req.params.email;
       const { name, image } = req.body;
@@ -90,14 +272,37 @@ async function run() {
 
       res.send(result);
     });
-    app.post('/api/recipes', async (req, res) => {
+    app.post("/api/recipes", async (req, res) => {
       try {
         const recipe = req.body;
-        const result = await recipesCollection.insertOne(recipe);
-        
+
+        const user = await usersCollection.findOne({
+          email: recipe.userEmail,
+        });
+
+        const recipeCount =
+          await recipesCollection.countDocuments({
+            userEmail: recipe.userEmail,
+          });
+
+        // Free user limit
+        if (!user?.isPremium && recipeCount >= 2) {
+          return res.status(403).send({
+            success: false,
+            message:
+              "Free users can only add 2 recipes. Upgrade to Premium.",
+          });
+        }
+
+        const result = await recipesCollection.insertOne(
+          recipe
+        );
+
         res.send(result);
       } catch (error) {
-        res.status(500).send({ error: 'Failed to create recipe' });
+        res.status(500).send({
+          message: "Failed to create recipe",
+        });
       }
     });
     app.get('/api/recipes', async (req, res) => {
@@ -302,6 +507,10 @@ async function run() {
         res.status(500).send({ message: "Server error" });
       }
     });
+
+
+    //payment
+    
 
 
 
