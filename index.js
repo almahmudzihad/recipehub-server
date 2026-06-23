@@ -40,12 +40,18 @@ const verifyToken = async (req, res, next) => {
   }
 }
 const adminVerify = async (req, res, next) => {
-  const user = req.user;
-  if (user.role !== "admin") {
-    return res.status(403).send({ message: "Forbidden" });
+  const email = req.user.email;
+
+  const admin = await usersCollection.findOne({ email });
+
+  if (!admin || admin.role !== "admin") {
+    return res.status(403).send({
+      message: "Forbidden Access",
+    });
   }
+
   next();
-}
+};
 client.connect(() => {
   console.log("Connected to MongoDB");
 }).catch(console.dir);
