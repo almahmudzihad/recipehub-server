@@ -7,6 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 
 app.get('/', (req, res) => {
   res.send('Hello World! RecipeHub Server is running')
@@ -23,7 +24,28 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
-
+const JWTS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URL}/api/auth/jwks`) );
+const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const { payload } = await jwtVerify(token, JWTS);
+    req.user = payload;
+    next();
+  } catch (error) {
+    res.status(401).send({ message: "Unauthorized" });
+  }
+}
+const adminVerify = async (req, res, next) => {
+  const user = req.user;
+  if (user.role !== "admin") {
+    return res.status(403).send({ message: "Forbidden" });
+  }
+  next();
+}
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -604,7 +626,7 @@ async function run() {
         });
       }
     });
-    app.get("/admin/transactions", async (req, res) => {
+    app.get("/admin/transactions", verifyToken, adminVerify, async (req, res) => {
       try {
         const transactions = await paymentsCollection
           .find()
@@ -619,7 +641,7 @@ async function run() {
       }
     });
     
-    app.get("/recipes/popular", async (req, res) => {
+    app.get("/recipes/popular",  async (req, res) => {
       try {
         const recipes = await recipesCollection
           .find()
@@ -634,7 +656,7 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    //await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
