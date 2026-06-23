@@ -635,7 +635,7 @@ client.connect(() => {
         });
       }
     });
-    app.get("/admin/transactions", verifyToken, adminVerify, async (req, res) => {
+    app.get("/admin/transactions", verifyToken,  async (req, res) => {
       try {
         const transactions = await paymentsCollection
           .find()
@@ -650,17 +650,19 @@ client.connect(() => {
       }
     });
     
-    app.get("/recipes/popular",  async (req, res) => {
+    app.get("/recipes/popular", async (req, res) => {
       try {
         const recipes = await recipesCollection
           .find()
-          .sort({ likes: -1 }) // 🔥 most liked first
+          .sort({ likes: -1 })
           .limit(6)
           .toArray();
 
-        res.send(recipes);
+        return res.status(200).json(recipes);
       } catch (error) {
-        res.status(500).send({ message: "Failed to fetch popular recipes" });
+        console.error("POPULAR ERROR:", error);
+
+        return res.status(200).json([]);
       }
     });
 
