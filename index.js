@@ -31,15 +31,18 @@ const verifyToken = async (req, res, next) => {
     return res.status(401).send({ message: "Unauthorized" });
   }
   const token = authHeader.split(" ")[1];
+  
   try {
     const { payload } = await jwtVerify(token, JWTS);
     req.user = payload;
+    console.log("payload:", payload);
     next();
   } catch (error) {
+    console.log("JWT ERROR:", error);
     res.status(401).send({ message: "Unauthorized" });
   }
 }
-const adminVerify = async (req, res, next) => {
+async function adminVerify(req, res, next) {
   const email = req.user.email;
 
   const admin = await usersCollection.findOne({ email });
@@ -51,7 +54,7 @@ const adminVerify = async (req, res, next) => {
   }
 
   next();
-};
+}
 client.connect(() => {
   console.log("Connected to MongoDB");
 }).catch(console.dir);
@@ -177,6 +180,16 @@ client.connect(() => {
       const result = await recipesCollection.updateOne(
         { _id: new ObjectId(id) },
         { $set: { isFeatured: true } }
+      );
+
+      res.send(result);
+    });
+    app.patch("/admin/recipes/:id/unfeature", async (req, res) => {
+      const id = req.params.id;
+
+      const result = await recipesCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { isFeatured: false } }
       );
 
       res.send(result);
@@ -586,10 +599,21 @@ client.connect(() => {
           paymentType,
         } = req.body;
 
-        // basic validation
         if (!userEmail || !transactionId) {
           return res.status(400).send({
             message: "Missing required fields",
+          });
+        }
+
+        // Prevent duplicate payments
+        const existing = await paymentsCollection.findOne({
+          transactionId,
+        });
+
+        if (existing) {
+          return res.send({
+            success: true,
+            message: "Payment already saved",
           });
         }
 
@@ -599,8 +623,8 @@ client.connect(() => {
           recipeId: recipeId || null,
           amount: Number(amount) || 0,
           transactionId,
-          paymentStatus: paymentStatus || "pending",
-          paymentType: paymentType || "recipe", // recipe | membership
+          paymentStatus: paymentStatus || "paid",
+          paymentType: paymentType || "recipe",
           paidAt: new Date(),
         };
 
@@ -610,7 +634,6 @@ client.connect(() => {
           success: true,
           insertedId: result.insertedId,
         });
-
       } catch (error) {
         console.error("PAYMENT ERROR:", error);
 
